@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shop Borrowers</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#fdf8f1;--card:#ffffff;--text:#2b2118;--muted:#8a7a6a;--accent:#0f766e;--accent-soft:#ccfbf1;--danger:#be123c;--line:#eadfd1;--head:#0f766e;--headtext:#ffffff;--open-bg:#fef3c7;--open-text:#92400e;--done-bg:#dcfce7;--done-text:#166534}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15110d;--card:#211a14;--text:#f5ede3;--muted:#b3a492;--accent:#2dd4bf;--accent-soft:#134e4a;--danger:#fb7185;--line:#3a2f25;--head:#115e59;--headtext:#f0fdfa;--open-bg:#422006;--open-text:#fcd34d;--done-bg:#052e16;--done-text:#86efac}}
+:root[data-theme="dark"]{--bg:#15110d;--card:#211a14;--text:#f5ede3;--muted:#b3a492;--accent:#2dd4bf;--accent-soft:#134e4a;--danger:#fb7185;--line:#3a2f25;--head:#115e59;--headtext:#f0fdfa;--open-bg:#422006;--open-text:#fcd34d;--done-bg:#052e16;--done-text:#86efac}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:17px}
+header{padding:16px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--head);color:var(--headtext);z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+h1{font-size:22px;margin:0 0 6px}
+.total{opacity:.9;font-size:15px}
+main{padding:16px;max-width:600px;margin:0 auto}
+form,.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;display:grid;gap:10px;margin-bottom:16px}
+input,textarea{width:100%;font:inherit;font-size:17px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--text)}
+input:focus,textarea:focus{outline:2px solid var(--accent);border-color:transparent}
+button{font:inherit;font-size:16px;padding:12px 14px;border:0;border-radius:12px;background:var(--accent);color:#fff;cursor:pointer;font-weight:600}
+button.secondary{background:var(--accent-soft);color:var(--accent)}
+button.danger{background:transparent;color:var(--danger);border:1px solid var(--line)}
+button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+.row{display:flex;gap:8px}
+.row>*{flex:1;min-width:0}
+.card{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--accent);border-radius:16px;padding:14px;margin-bottom:12px}
+.card.returned{border-left-color:var(--line);opacity:.75}
+.card-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.name{font-weight:700;font-size:18px}
+.amount{font-weight:700;color:var(--accent);white-space:nowrap}
+.meta{color:var(--muted);font-size:14px;margin-top:6px;line-height:1.5}
+.badge{display:inline-block;font-size:12px;padding:3px 9px;border-radius:99px;margin-left:8px;font-weight:600}
+.open{background:var(--open-bg);color:var(--open-text)}
+.done{background:var(--done-bg);color:var(--done-text)}
+.actions{display:flex;gap:8px;margin-top:12px}
+.actions button{flex:1}
+.empty{text-align:center;color:var(--muted);padding:30px 10px}
+.search{margin-bottom:12px}
+.panel h2{font-size:17px;margin:0}
+.hint{color:var(--muted);font-size:14px;margin:0}
+.tools{display:flex;justify-content:center;margin:20px 0 8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Shop Borrowers</h1>
+  <div class="total" id="total"></div>
+</header>
+<main>
+  <form id="addForm">
+    <input id="name" placeholder="Name" required autocomplete="off">
+    <input id="item" placeholder="What did they borrow?" autocomplete="off">
+    <div class="row">
+      <input id="amount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Amount owed (optional)">
+      <input id="date" type="date">
+    </div>
+    <input id="phone" type="tel" inputmode="tel" placeholder="Phone (optional)">
+    <textarea id="note" rows="2" placeholder="Note (optional)"></textarea>
+    <button type="submit">Add borrower</button>
+  </form>
+  <input class="search" id="search" placeholder="Search name..." autocomplete="off">
+  <div id="list"></div>
+
+  <div class="tools"><button class="ghost" id="toggleBackup">Backup / Restore</button></div>
+  <div class="panel" id="backupPanel" hidden>
+    <h2>Backup</h2>
+    <p class="hint">Copy this text and save it somewhere safe (notes app, email to yourself).</p>
+    <textarea id="exportBox" rows="5" readonly></textarea>
+    <button class="secondary" id="copyBtn">Copy backup</button>
+    <h2>Restore</h2>
+    <p class="hint">Paste a backup here, then choose how to restore.</p>
+    <textarea id="importBox" rows="5" placeholder="Paste backup text here"></textarea>
+    <div class="row">
+      <button class="secondary" id="mergeBtn">Add to list</button>
+      <button class="danger" id="replaceBtn">Replace list</button>
+    </div>
+    <p class="hint" id="backupMsg"></p>
+  </div>
+</main>
+<script>
+const KEY="shopBorrowers";
+let people=[];
+function load(){try{people=JSON.parse(localStorage.getItem(KEY))||[];if(!Array.isArray(people))people=[]}catch(e){people=[]}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(people))}catch(e){}}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function money(n){return Number(n||0).toFixed(2)}
+function today(){const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)}
+
+function render(){
+  const q=document.getElementById("search").value.trim().toLowerCase();
+  const list=document.getElementById("list");
+  const shown=people.filter(p=>!q||String(p.name).toLowerCase().includes(q)).sort((a,b)=>(a.returned-b.returned)||(b.created-a.created));
+  const out=people.filter(p=>!p.returned);
+  const owed=out.reduce((s,p)=>s+Number(p.amount||0),0);
+  document.getElementById("total").textContent=`Still out: ${out.length} item(s) · Money owed: ${money(owed)}`;
+  if(!shown.length){list.innerHTML=`<div class="empty">${people.length?"No match.":"No borrowers yet. Add one above."}</div>`;return}
+  list.innerHTML=shown.map(p=>`
+    <div class="card ${p.returned?"returned":""}">
+      <div class="card-top">
+        <div><span class="name">${esc(p.name)}</span><span class="badge ${p.returned?"done":"open"}">${p.returned?"Returned":"Not returned"}</span></div>
+        ${p.amount?`<div class="amount">${money(p.amount)}</div>`:""}
+      </div>
+      <div class="meta">
+        ${p.item?`Item: ${esc(p.item)}<br>`:""}
+        Date: ${esc(p.date)}${p.phone?` · Phone: ${esc(p.phone)}`:""}
+        ${p.note?`<br>Note: ${esc(p.note)}`:""}
+      </div>
+      <div class="actions">
+        <button class="secondary" onclick="toggle('${p.id}')">${p.returned?"Mark not returned":"Mark returned"}</button>
+        <button class="danger" onclick="removeP('${p.id}')">Delete</button>
+      </div>
+    </div>`).join("");
+}
+function toggle(id){const p=people.find(x=>x.id===id);if(p){p.returned=!p.returned;save();render()}}
+function removeP(id){if(confirm("Delete this borrower?")){people=people.filter(x=>x.id!==id);save();render()}}
+
+document.getElementById("addForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  const name=document.getElementById("name").value.trim();
+  if(!name)return;
+  people.push({
+    id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+    name,
+    item:document.getElementById("item").value.trim(),
+    amount:document.getElementById("amount").value,
+    date:document.getElementById("date").value||today(),
+    phone:document.getElementById("phone").value.trim(),
+    note:document.getElementById("note").value.trim(),
+    returned:false,
+    created:Date.now()
+  });
+  save();
+  e.target.reset();
+  document.getElementById("date").value=today();
+  render();
+});
+document.getElementById("search").addEventListener("input",render);
+
+// Backup and restore (copy/paste text, works on phone)
+const msg=t=>document.getElementById("backupMsg").textContent=t;
+document.getElementById("toggleBackup").addEventListener("click",()=>{
+  const p=document.getElementById("backupPanel");
+  p.hidden=!p.hidden;
+  if(!p.hidden){document.getElementById("exportBox").value=JSON.stringify(people);msg("")}
+});
+document.getElementById("copyBtn").addEventListener("click",async()=>{
+  const box=document.getElementById("exportBox");
+  box.select();
+  try{await navigator.clipboard.writeText(box.value);msg("Copied. Save it somewhere safe.")}
+  catch(e){msg("Press and hold the text box, then choose Copy.")}
+});
+function parseBackup(){
+  try{const d=JSON.parse(document.getElementById("importBox").value.trim());
+    if(!Array.isArray(d)||!d.every(x=>x&&typeof x.name==="string"))throw 0;return d}
+  catch(e){msg("That backup text is not valid.");return null}
+}
+document.getElementById("mergeBtn").addEventListener("click",()=>{
+  const d=parseBackup();if(!d)return;
+  const ids=new Set(people.map(p=>p.id));
+  d.forEach(x=>{if(!ids.has(x.id))people.push(x)});
+  save();render();msg(`Added ${d.length} entries.`);
+});
+document.getElementById("replaceBtn").addEventListener("click",()=>{
+  const d=parseBackup();if(!d)return;
+  if(!confirm("Replace the whole list with this backup?"))return;
+  people=d;save();render();msg("List replaced.");
+});
+
+document.getElementById("date").value=today();
+load();render();
+</script>
+</body>
+</html>
